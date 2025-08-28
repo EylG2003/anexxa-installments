@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/pay",
+      "destination": "https://anexxa-qr-pay.vercel.app"
+    },
+    {
+      "source": "/installments",
+      "destination": "https://anexxa-installments.vercel.app"
+    }
+  ]
+}
