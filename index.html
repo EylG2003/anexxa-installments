@@ -1,66 +1,111 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Anexxa — Installments</title>
+  <title>Anexxa – Create Installment Plan</title>
   <style>
-    body { font-family: system-ui, Arial; margin: 24px; max-width: 520px }
-    input, button { padding: 10px; font-size: 16px; }
-    label { display:block; margin-top:12px; }
-    #out { white-space: pre-wrap; background:#f6f6f6; padding:8px; margin-top:12px; border-radius:6px }
+    :root { --w: 560px; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; }
+    .card { max-width: var(--w); padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; }
+    h1 { margin: 0 0 16px; font-size: 28px; }
+    label { display:block; font-weight: 600; margin: 14px 0 6px; }
+    input { width: 100%; padding: 10px 12px; font-size: 16px; border: 1px solid #cbd5e1; border-radius: 8px; }
+    button { margin-top: 16px; padding: 10px 14px; font-size: 16px; border-radius: 10px; border: 1px solid #0ea5e9; background: #0ea5e9; color: #fff; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: not-allowed; }
+    .muted { color:#64748b; font-size: 14px; }
+    .summary { margin-top: 10px; padding: 10px 12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; }
+    .err { margin-top: 14px; padding: 10px 12px; background:#fff1f2; border:1px solid #fecdd3; color:#7f1d1d; border-radius:8px; white-space:pre-wrap; }
+    .hidden { display:none; }
   </style>
 </head>
 <body>
-  <h1>Create Installment Plan</h1>
-  <label>Total Amount (€): <input id="amt" type="number" min="1" step="0.01" value="3.00"></label>
-  <label>Months: <input id="months" type="number" min="2" step="1" value="3"></label>
-  <button id="go">Start checkout</button>
-  <div id="out"></div>
+  <div class="card">
+    <h1>Create Installment Plan</h1>
+
+    <label for="amount">Total Amount (€)</label>
+    <input id="amount" type="text" inputmode="decimal" placeholder="50.00" value="50,00" />
+
+    <label for="months">Months</label>
+    <input id="months" type="number" min="2" max="24" value="3" />
+
+    <div class="summary" id="summary"></div>
+    <div class="muted">We’ll create a <b>monthly subscription</b> that charges the amount above divided by the months you choose.</div>
+
+    <button id="start">Start checkout</button>
+    <div id="err" class="err hidden"></div>
+  </div>
 
   <script>
+    const elAmount = document.getElementById('amount');
+    const elMonths = document.getElementById('months');
+    const elSummary = document.getElementById('summary');
+    const elErr = document.getElementById('err');
+    const btn = document.getElementById('start');
+
+    function euroToNumber(s) {
+      return parseFloat(String(s || '').replace(',', '.'));
+    }
+
+    function formatEuro(n) {
+      return (Math.round(n * 100) / 100).toFixed(2).replace('.', ',');
+    }
+
+    function updateSummary() {
+      elErr.classList.add('hidden');
+      const total = euroToNumber(elAmount.value);
+      const months = parseInt(elMonths.value, 10) || 0;
+      if (!isFinite(total) || total <= 0 || months < 2) {
+        elSummary.textContent = 'Enter a positive total and at least 2 months.';
+        btn.disabled = true;
+        return;
+      }
+      const perMonth = Math.round((total * 100) / months) / 100;
+      elSummary.textContent = `You’ll charge €${formatEuro(perMonth)} / month for ${months} months (≈ €${formatEuro(total)} total).`;
+      btn.disabled = false;
+    }
+
     async function start() {
-      const out = document.getElementById('out');
-      out.textContent = '';
       try {
-        const euros = document.getElementById('amt').value.replace(',', '.');
-        const cents = Math.round(parseFloat(euros) * 100);
-        const count = parseInt(document.getElementById('months').value, 10);
+        btn.disabled = true;
+        elErr.classList.add('hidden');
+        const amountEuro = String(elAmount.value).trim();
+        const months = String(elMonths.value).trim();
 
-        if (!Number.isFinite(cents) || cents < 100) { out.textContent = 'Enter at least €1.00'; return; }
-        if (!Number.isFinite(count) || count < 2) { out.textContent = 'Months must be ≥ 2'; return; }
-
-        const resp = await fetch('/api/installments-subscribe', {
+        const res = await fetch('/api/installments-subscribe', {
           method: 'POST',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({
-            amountCents: cents,
-            currency: 'eur',
-            count,
-            interval: 'month',
-            description: 'In-person sale',
-            customerEmail: 'buyer@example.com'
-          })
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ amountEuro, months, currency: 'eur' })
         });
 
-        const text = await resp.text();
+        const text = await res.text();
         let data = {};
-        try { data = JSON.parse(text); } catch(e) {}
+        try { data = JSON.parse(text); } catch {}
 
-        if (!resp.ok) {
-          out.textContent = 'Server error:\n' + (data.error || text || (resp.status + ' ' + resp.statusText));
+        if (!res.ok) {
+          elErr.textContent = data.error || text || 'Server error';
+          elErr.classList.remove('hidden');
+          btn.disabled = false;
           return;
         }
         if (!data.url) {
-          out.textContent = 'No checkout URL returned.\nRaw: ' + text;
+          elErr.textContent = 'No checkout URL returned from server.';
+          elErr.classList.remove('hidden');
+          btn.disabled = false;
           return;
         }
-        window.location.href = data.url; // redirect to Stripe Checkout
+        window.location.href = data.url;
       } catch (e) {
-        out.textContent = 'Client error: ' + e.message;
+        elErr.textContent = 'Client error: ' + (e?.message || e);
+        elErr.classList.remove('hidden');
+        btn.disabled = false;
       }
     }
-    document.getElementById('go').addEventListener('click', start);
+
+    elAmount.addEventListener('input', updateSummary);
+    elMonths.addEventListener('input', updateSummary);
+    btn.addEventListener('click', start);
+    document.addEventListener('DOMContentLoaded', updateSummary);
   </script>
 </body>
 </html>
