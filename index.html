@@ -1,31 +1,66 @@
 <!doctype html>
 <html>
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Anexxa – Installments</title>
-  <style>body{font-family:system-ui,Arial;margin:24px;max-width:560px}</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Anexxa — Installments</title>
+  <style>
+    body { font-family: system-ui, Arial; margin: 24px; max-width: 520px }
+    input, button { padding: 10px; font-size: 16px; }
+    label { display:block; margin-top:12px; }
+    #out { white-space: pre-wrap; background:#f6f6f6; padding:8px; margin-top:12px; border-radius:6px }
+  </style>
 </head>
 <body>
   <h1>Create Installment Plan</h1>
-  <label>Amount (€): <input id="amt" type="number" min="1" step="0.01" value="30.00"/></label><br/><br/>
-  <label>Months: <input id="months" type="number" min="2" max="24" value="3"/></label><br/><br/>
-  <button id="go">Start Checkout</button>
+  <label>Total Amount (€): <input id="amt" type="number" min="1" step="0.01" value="3.00"></label>
+  <label>Months: <input id="months" type="number" min="2" step="1" value="3"></label>
+  <button id="go">Start checkout</button>
+  <div id="out"></div>
 
   <script>
-    async function main(){
-      const amount = parseFloat(document.getElementById('amt').value.replace(',', '.'));
-      const months = parseInt(document.getElementById('months').value, 10);
-      const res = await fetch('/api/installments-subscribe', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ amountCents: Math.round(amount*100), months })
-      });
-      const data = await res.json();
-      if(!res.ok) return alert(data.error || 'Server error');
-      location.href = data.url;
+    async function start() {
+      const out = document.getElementById('out');
+      out.textContent = '';
+      try {
+        const euros = document.getElementById('amt').value.replace(',', '.');
+        const cents = Math.round(parseFloat(euros) * 100);
+        const count = parseInt(document.getElementById('months').value, 10);
+
+        if (!Number.isFinite(cents) || cents < 100) { out.textContent = 'Enter at least €1.00'; return; }
+        if (!Number.isFinite(count) || count < 2) { out.textContent = 'Months must be ≥ 2'; return; }
+
+        const resp = await fetch('/api/installments-subscribe', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({
+            amountCents: cents,
+            currency: 'eur',
+            count,
+            interval: 'month',
+            description: 'In-person sale',
+            customerEmail: 'buyer@example.com'
+          })
+        });
+
+        const text = await resp.text();
+        let data = {};
+        try { data = JSON.parse(text); } catch(e) {}
+
+        if (!resp.ok) {
+          out.textContent = 'Server error:\n' + (data.error || text || (resp.status + ' ' + resp.statusText));
+          return;
+        }
+        if (!data.url) {
+          out.textContent = 'No checkout URL returned.\nRaw: ' + text;
+          return;
+        }
+        window.location.href = data.url; // redirect to Stripe Checkout
+      } catch (e) {
+        out.textContent = 'Client error: ' + e.message;
+      }
     }
-    document.getElementById('go').addEventListener('click', main);
+    document.getElementById('go').addEventListener('click', start);
   </script>
 </body>
 </html>
